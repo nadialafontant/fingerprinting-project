@@ -1,0 +1,12 @@
+streamlit==1.44.0
+torch==2.2.2
+torchvision==0.17.2
+torchaudio==2.2.2
+pillow==11.1.0
+numpy==1.26.4
+pandas==2.2.3
+psutil==7.0.0
+codecarbon==2.8.3
+scikit-learn==1.6.1
+matplotlib==3.10.1
+opencv-python==4.11.0.86

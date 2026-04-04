@@ -23,6 +23,185 @@ The goal is to build a dataset of model execution signatures and use those signa
 
 ---
 
+## Quick Start (End-to-End Workflow)
+
+This project supports **multi-device dataset collection** for building a large-scale model fingerprinting dataset.
+
+Follow this workflow on each device, then merge everything at the end.
+
+---
+
+## BEFORE Data Collection (Per Device Setup)
+
+Run these steps on **every device** before collecting data.
+
+### 1. Get the latest code
+
+```bash
+git pull --rebase
+```
+
+### 2. Activate environment
+
+#### Conda
+
+```bash
+conda activate fingerprinting
+```
+
+#### or venv
+
+```bash
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Ensure trained model checkpoints exist
+
+Expected files:
+
+```text
+checkpoints/mnist_cnn.pth
+checkpoints/mnist_dnn.pth
+checkpoints/mnist_tiny_llm.pth
+checkpoints/mnist_tiny_vlm.pth
+```
+
+If missing, train them:
+
+```bash
+python scripts/train.py
+python scripts/train_tiny_llm.py
+python scripts/train_tiny_vlm.py
+```
+
+### 5. Generate model performance metrics
+
+```bash
+python scripts/generate_model_metrics.py
+```
+
+This creates:
+
+```text
+logs/model_metrics.json
+```
+
+---
+
+## DATA COLLECTION (Per Device)
+
+### Automated dataset generation
+
+```bash
+python scripts/generate_fingerprint_dataset.py
+```
+
+This generates:
+
+- **1000 samples per model**
+- Total: **4000 rows per run**
+
+Saved to:
+
+```text
+logs/raw_devices/fingerprint_dataset_<device_short>_automated.csv
+```
+
+---
+
+### Manual dataset collection (optional but recommended)
+
+```bash
+python -m streamlit run app.py
+```
+
+This allows you to draw digits and collect human-input data.
+
+Saved to:
+
+```text
+logs/raw_devices/fingerprint_dataset_<device_short>_manual.csv
+```
+
+---
+
+## AFTER Data Collection (Per Device)
+
+After finishing on a device, make sure to keep:
+
+```text
+logs/raw_devices/fingerprint_dataset_<device_short>_automated.csv
+logs/raw_devices/fingerprint_dataset_<device_short>_manual.csv
+```
+
+You can now move to another device and repeat the same process.
+
+---
+
+## AFTER ALL DEVICES (Merge Everything)
+
+Once data has been collected from all devices:
+
+1. Copy all dataset files into the `logs/raw_devices/` folder of a single main project
+
+2. Run:
+
+```bash
+python scripts/merge_fingerprint_datasets.py
+```
+
+This creates:
+
+```text
+logs/merged/fingerprint_dataset_master.csv
+```
+
+---
+
+## Final Dataset
+
+The merged dataset includes:
+
+- multiple model types (CNN, DNN, Tiny LLM, Tiny VLM)
+- multiple devices (via `unique_device_id`)
+- both collection modes:
+  - `manual`
+  - `automated`
+- runtime + hardware + energy features
+
+This dataset can be used for:
+
+- model fingerprint classification
+- device-based performance analysis
+- energy-aware ML research
+- architecture identification from runtime signals
+
+---
+
+## One-Line Summary
+
+Per device:
+
+```bash
+python scripts/generate_model_metrics.py
+python scripts/generate_fingerprint_dataset.py
+python -m streamlit run app.py
+```
+
+After all devices:
+
+```bash
+python scripts/merge_fingerprint_datasets.py
+```
+
+---
+
 ## Project Goals
 
 - Train multiple model families on the same digit-recognition task
@@ -61,7 +240,10 @@ fingerprinting-project/
 │   ├── train_tiny_llm.py
 │   ├── train_tiny_vlm.py
 │   ├── verification.py
-│   └── generate_model_metrics.py
+│   ├── generate_model_metrics.py
+│   ├── generate_fingerprint_dataset.py
+│   ├── merge_fingerprint_datasets.py
+│   └── check_model_accuracy.py
 │
 ├── checkpoints/
 │   ├── mnist_cnn.pth
@@ -70,13 +252,21 @@ fingerprinting-project/
 │   └── mnist_tiny_vlm.pth
 │
 ├── logs/
+│   ├── raw_devices/
+│   │   ├── fingerprint_dataset_<device_short>_automated.csv
+│   │   └── fingerprint_dataset_<device_short>_manual.csv
+│   │
+│   ├── merged/
+│   │   └── fingerprint_dataset_master.csv
+│   │
 │   ├── emissions.csv
-│   ├── fingerprint_master_data.csv
 │   ├── powermetrics_log.txt
 │   └── model_metrics.json
 │
-└── config/
-    └── device_id.txt
+├── config/
+│   └── device_id.txt
+│
+└── __pycache__/
 ```
 
 ---
@@ -84,16 +274,20 @@ fingerprinting-project/
 ## Models Included
 
 ### 1. CNN
+
 A convolutional neural network trained on MNIST.
 
 ### 2. DNN
+
 A fully connected neural network baseline for MNIST classification.
 
 ### 3. Tiny LLM
+
 A small transformer-style model that tokenizes image patches and predicts the digit class.  
 This is used to represent an LLM-like architecture in the fingerprinting study.
 
 ### 4. Tiny VLM
+
 A compact vision-language model that aligns image embeddings with text prompts such as `"digit 0"` through `"digit 9"`.  
 This is used to represent a multimodal architecture in the fingerprinting study.
 
@@ -150,6 +344,7 @@ Main libraries used:
 - `matplotlib`
 - `opencv-python`
 - `thop`
+- `tqdm`
 
 ---
 
@@ -249,16 +444,21 @@ The app allows the user to:
 
 ## Logged Metadata
 
-Each inference run appends a row to:
+Manual and automated inference runs are saved into device-specific CSV files under:
 
 ```text
-logs/fingerprint_master_data.csv
+logs/raw_devices/
 ```
 
 Logged runtime and fingerprinting features include:
 
 - timestamp
 - device identifier
+- device short ID
+- PC / host name
+- collection mode (`manual` or `automated`)
+- sample index (for automated runs)
+- true label (for automated runs)
 - model type
 - number of parameters
 - prediction result
@@ -310,6 +510,8 @@ The Streamlit sidebar tracks:
 
 This supports controlled collection of inference traces for later analysis.
 
+For larger-scale experiments, the automated collection script can generate **4000 rows per run** (1000 per model), which can then be combined across multiple devices.
+
 ---
 
 ## Notes
@@ -319,6 +521,7 @@ This supports controlled collection of inference traces for later analysis.
 - CodeCarbon is used for emissions and energy estimation during inference
 - Caching is used in the Streamlit app to improve prediction speed
 - Model performance metrics are generated separately and then loaded into the app for display and logging
+- Device-specific CSVs are stored separately and merged later for large-scale experiments
 
 ---
 
@@ -336,7 +539,10 @@ This supports controlled collection of inference traces for later analysis.
 ## Troubleshooting
 
 ### Canvas toolbar icons look dark or hard to see
+
 Depending on your browser/theme settings, some toolbar icons in the drawing canvas may appear darker than expected. If that happens, try switching your browser or system theme.
+
+---
 
 ## Author
 

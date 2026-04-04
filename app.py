@@ -32,10 +32,17 @@ def get_device_id():
 
 
 DEVICE_UUID = get_device_id()
+DEVICE_SHORT = DEVICE_UUID.split("-")[0]
 
 
 def get_hostname():
     return os.getenv("COMPUTERNAME", os.getenv("HOSTNAME", "Unknown_Device"))
+
+
+def get_manual_dataset_path():
+    raw_dir = os.path.join("logs", "raw_devices")
+    os.makedirs(raw_dir, exist_ok=True)
+    return os.path.join(raw_dir, f"fingerprint_dataset_{DEVICE_SHORT}_manual.csv")
 
 
 def ensure_session_state():
@@ -64,7 +71,7 @@ def ensure_session_state():
 
 
 def get_csv_counts():
-    file_path = "logs/fingerprint_master_data.csv"
+    file_path = get_manual_dataset_path()
     counts = {"CNN": 0, "DNN": 0, "Tiny LLM": 0, "Tiny VLM": 0}
 
     if os.path.exists(file_path):
@@ -101,7 +108,11 @@ def log_fingerprint(model_name, num_params, exec_time, emissions_data, tracker, 
     metadata = {
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "unique_device_id": DEVICE_UUID,
+        "device_short_id": DEVICE_SHORT,
         "pc_name": get_hostname(),
+        "collection_mode": "manual",
+        "sample_index": None,
+        "true_label": None,
         "model_type": model_name,
         "parameters": num_params,
         "prediction": prediction,
@@ -116,8 +127,6 @@ def log_fingerprint(model_name, num_params, exec_time, emissions_data, tracker, 
         "ram_usage_pct": ram_usage,
         "cpu_clock_mhz": cpu_freq,
         "memory_footprint_mb": psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024),
-
-        # Always include these columns, even if empty
         "model_accuracy": None,
         "model_precision_weighted": None,
         "model_recall_weighted": None,
@@ -132,8 +141,7 @@ def log_fingerprint(model_name, num_params, exec_time, emissions_data, tracker, 
         metadata["model_f1_weighted"] = model_metrics.get("f1_weighted")
         metadata["model_flops"] = model_metrics.get("flops")
 
-    file_path = "logs/fingerprint_master_data.csv"
-
+    file_path = get_manual_dataset_path()
     expected_columns = list(metadata.keys())
 
     if os.path.exists(file_path):
@@ -177,43 +185,22 @@ ensure_session_state()
 
 st.title("ML Fingerprinter")
 
-st.markdown("""
-    <style>
-    button[title="Undo"] svg,
-    button[title="Redo"] svg,
-    button[title="Download"] svg,
-    button[title="Delete"] svg,
-    button[title="Clear"] svg {
-        fill: white !important;
-        color: white !important;
-        stroke: white !important;
-    }
-
-    button[title="Undo"],
-    button[title="Redo"],
-    button[title="Download"],
-    button[title="Delete"],
-    button[title="Clear"] {
-        color: white !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device_str = "cuda" if torch.cuda.is_available() else "cpu"
 
 cnn_model, dnn_model, llm_bundle, vlm_bundle = load_all_models(device_str)
 model_metrics = load_model_metrics()
 
-# Sidebar info
 st.sidebar.header("Device Identity")
 st.sidebar.text(f"ID: {DEVICE_UUID}")
+st.sidebar.text(f"Short ID: {DEVICE_SHORT}")
 st.sidebar.text(f"Device: {get_hostname()}")
+st.sidebar.text(f"Manual file: {get_manual_dataset_path()}")
 
 csv_counts = get_csv_counts()
 
 st.sidebar.header("Run Tracking")
-st.sidebar.write("Saved dataset counts:")
+st.sidebar.write("Saved dataset counts (manual):")
 st.sidebar.write(f"CNN: {csv_counts['CNN']} / 1000")
 st.sidebar.write(f"DNN: {csv_counts['DNN']} / 1000")
 st.sidebar.write(f"Tiny LLM: {csv_counts['Tiny LLM']} / 1000")
@@ -366,5 +353,5 @@ if st.session_state.last_prediction is not None:
     latest_csv_counts = get_csv_counts()
     st.write(
         f"{st.session_state.last_model_choice}: "
-        f"{latest_csv_counts[st.session_state.last_model_choice]} / 1000 saved runs"
+        f"{latest_csv_counts[st.session_state.last_model_choice]} / 1000 saved manual runs"
     )

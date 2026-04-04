@@ -95,6 +95,19 @@ def append_rows(rows, file_path):
     new_df.to_csv(file_path, index=False)
 
 
+def get_existing_count(file_path, model_name):
+    if not file_path.exists():
+        return 0
+
+    try:
+        df = pd.read_csv(file_path, on_bad_lines="skip")
+        if "model_type" not in df.columns:
+            return 0
+        return len(df[df["model_type"].astype(str).str.strip() == model_name])
+    except Exception:
+        return 0
+
+
 def tensor_to_canvas_array(image_tensor):
     img = image_tensor.squeeze(0).cpu().numpy() * 255.0
     img = img.clip(0, 255).astype("uint8")
@@ -201,8 +214,20 @@ def collect_for_model(model_name, num_samples=1000, flush_every=50):
         raise ValueError(f"Unknown model: {model_name}")
 
     limit = min(num_samples, len(base_dataset))
+    existing_count = get_existing_count(output_path, model_name)
 
-    progress_bar = tqdm(range(limit), desc=f"{model_name}", unit="sample", dynamic_ncols=True)
+    if existing_count >= limit:
+        print(f"{model_name}: already complete ({existing_count}/{limit}) -> skipping")
+        return
+
+    print(f"{model_name}: resuming from {existing_count}/{limit}")
+
+    progress_bar = tqdm(
+        range(existing_count, limit),
+        desc=f"{model_name}",
+        unit="sample",
+        dynamic_ncols=True
+    )
 
     for i in progress_bar:
         image_tensor, true_label = base_dataset[i]
@@ -246,18 +271,13 @@ def collect_for_model(model_name, num_samples=1000, flush_every=50):
         progress_bar.set_postfix({
             "pred": pred,
             "true": int(true_label),
-            "time_s": round(exec_time, 3)
+            "time_s": round(exec_time, 3),
+            "done": i + 1
         })
 
         if (i + 1) % flush_every == 0:
             append_rows(rows, output_path)
             rows = []
-            progress_bar.set_postfix({
-                "saved": i + 1,
-                "pred": pred,
-                "true": int(true_label),
-                "time_s": round(exec_time, 3)
-            })
 
     if rows:
         append_rows(rows, output_path)

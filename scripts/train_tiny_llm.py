@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from tiny_llm_model import MNISTTokenDataset, TinyLLMClassifier
+from models.tiny_llm_model import MNISTTokenDataset, TinyLLMClassifier
 
 
 def evaluate(model, data_loader, device):

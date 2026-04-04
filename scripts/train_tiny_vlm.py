@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from tiny_vlm_model import MNISTVLMTrainDataset, TinyVLM, VLMTextProcessor
+from models.tiny_vlm_model import MNISTVLMTrainDataset, TinyVLM, VLMTextProcessor
 
 
 def evaluate(model, data_loader, text_processor, device):

@@ -333,6 +333,11 @@ This supports controlled collection of inference traces for later analysis.
 
 ---
 
+## Troubleshooting
+
+### Canvas toolbar icons look dark or hard to see
+Depending on your browser/theme settings, some toolbar icons in the drawing canvas may appear darker than expected. If that happens, try switching your browser or system theme.
+
 ## Author
 
 **Nadia de Lafontant**

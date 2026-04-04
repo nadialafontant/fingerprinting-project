@@ -69,13 +69,14 @@ def get_csv_counts():
 
     if os.path.exists(file_path):
         try:
-            df = pd.read_csv(file_path)
+            df = pd.read_csv(file_path, on_bad_lines="skip")
             if "model_type" in df.columns:
+                df["model_type"] = df["model_type"].astype(str).str.strip()
                 value_counts = df["model_type"].value_counts().to_dict()
                 for model_name in counts:
                     counts[model_name] = int(value_counts.get(model_name, 0))
-        except Exception:
-            pass
+        except Exception as e:
+            print("Error reading CSV counts:", e)
 
     return counts
 
@@ -105,32 +106,51 @@ def log_fingerprint(model_name, num_params, exec_time, emissions_data, tracker, 
         "parameters": num_params,
         "prediction": prediction,
         "execution_time_sec": round(exec_time, 4),
-
         "cpu_energy_kwh": getattr(tracker.final_emissions_data, "cpu_energy", 0),
         "gpu_energy_kwh": getattr(tracker.final_emissions_data, "gpu_energy", 0),
         "ram_energy_kwh": getattr(tracker.final_emissions_data, "ram_energy", 0),
         "total_energy_kwh": getattr(tracker.final_emissions_data, "energy_consumed", 0),
         "total_emissions_kg": emissions_data,
-
         "cpu_usage_pct": cpu_usage,
         "gpu_model": gpu_name,
         "ram_usage_pct": ram_usage,
         "cpu_clock_mhz": cpu_freq,
-        "memory_footprint_mb": psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+        "memory_footprint_mb": psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024),
+
+        # Always include these columns, even if empty
+        "model_accuracy": None,
+        "model_precision_weighted": None,
+        "model_recall_weighted": None,
+        "model_f1_weighted": None,
+        "model_flops": None,
     }
 
     if model_metrics:
-        metadata.update({
-            "model_accuracy": model_metrics.get("accuracy"),
-            "model_precision_weighted": model_metrics.get("precision_weighted"),
-            "model_recall_weighted": model_metrics.get("recall_weighted"),
-            "model_f1_weighted": model_metrics.get("f1_weighted"),
-            "model_flops": model_metrics.get("flops")
-        })
+        metadata["model_accuracy"] = model_metrics.get("accuracy")
+        metadata["model_precision_weighted"] = model_metrics.get("precision_weighted")
+        metadata["model_recall_weighted"] = model_metrics.get("recall_weighted")
+        metadata["model_f1_weighted"] = model_metrics.get("f1_weighted")
+        metadata["model_flops"] = model_metrics.get("flops")
 
-    df = pd.DataFrame([metadata])
     file_path = "logs/fingerprint_master_data.csv"
-    df.to_csv(file_path, mode="a", header=not os.path.exists(file_path), index=False)
+
+    expected_columns = list(metadata.keys())
+
+    if os.path.exists(file_path):
+        try:
+            existing_df = pd.read_csv(file_path, on_bad_lines="skip")
+            for col in expected_columns:
+                if col not in existing_df.columns:
+                    existing_df[col] = None
+            existing_df = existing_df[expected_columns]
+        except Exception:
+            existing_df = pd.DataFrame(columns=expected_columns)
+    else:
+        existing_df = pd.DataFrame(columns=expected_columns)
+
+    new_row_df = pd.DataFrame([metadata], columns=expected_columns)
+    full_df = pd.concat([existing_df, new_row_df], ignore_index=True)
+    full_df.to_csv(file_path, index=False)
 
     return metadata
 
@@ -147,20 +167,42 @@ def load_all_models(device_str):
     dnn.load_state_dict(torch.load("checkpoints/mnist_dnn.pth", map_location=device))
     dnn.eval()
 
-    llm = load_tiny_llm_model("checkpoints/mnist_tiny_llm.pth")
+    llm_bundle = load_tiny_llm_model("checkpoints/mnist_tiny_llm.pth")
     vlm_bundle = load_tiny_vlm_model("checkpoints/mnist_tiny_vlm.pth")
 
-    return cnn, dnn, llm, vlm_bundle
+    return cnn, dnn, llm_bundle, vlm_bundle
 
 
 ensure_session_state()
 
 st.title("ML Fingerprinter")
 
+st.markdown("""
+    <style>
+    button[title="Undo"] svg,
+    button[title="Redo"] svg,
+    button[title="Download"] svg,
+    button[title="Delete"] svg,
+    button[title="Clear"] svg {
+        fill: white !important;
+        color: white !important;
+        stroke: white !important;
+    }
+
+    button[title="Undo"],
+    button[title="Redo"],
+    button[title="Download"],
+    button[title="Delete"],
+    button[title="Clear"] {
+        color: white !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device_str = "cuda" if torch.cuda.is_available() else "cpu"
 
-cnn_model, dnn_model, llm_model, vlm_bundle = load_all_models(device_str)
+cnn_model, dnn_model, llm_bundle, vlm_bundle = load_all_models(device_str)
 model_metrics = load_model_metrics()
 
 # Sidebar info
@@ -193,7 +235,7 @@ if model_choice == "CNN":
 elif model_choice == "DNN":
     model = dnn_model
 elif model_choice == "Tiny LLM":
-    model = llm_model
+    model, llm_helper_dataset = llm_bundle
 elif model_choice == "Tiny VLM":
     model, vlm_text_processor, cached_text_features = vlm_bundle
 
@@ -251,17 +293,24 @@ if canvas_result.image_data is not None and identify_clicked:
             output = model(input_tensor)
             pred = torch.argmax(output, 1).item()
         exec_time = time.time() - start_time
-
         confidence = None
 
     elif model_choice == "Tiny LLM":
         start_time = time.time()
-        pred, confidence = predict_with_tiny_llm(canvas_result.image_data, model)
+        pred, confidence = predict_with_tiny_llm(
+            canvas_result.image_data,
+            model,
+            llm_helper_dataset
+        )
         exec_time = time.time() - start_time
 
     elif model_choice == "Tiny VLM":
         start_time = time.time()
-        pred, confidence = predict_with_tiny_vlm(canvas_result.image_data, model, cached_text_features)
+        pred, confidence = predict_with_tiny_vlm(
+            canvas_result.image_data,
+            model,
+            cached_text_features
+        )
         exec_time = time.time() - start_time
 
     emissions_value = tracker.stop()
@@ -283,6 +332,8 @@ if canvas_result.image_data is not None and identify_clicked:
     st.session_state.last_log_entry = log_entry
     st.session_state.last_model_choice = model_choice
     st.session_state.last_confidence = confidence
+
+    st.rerun()
 
 if st.session_state.last_prediction is not None:
     st.success(f"Identification Complete: {st.session_state.last_prediction}")

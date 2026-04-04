@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
-from tiny_llm_model import TinyLLMClassifier, MNISTTokenDataset
+from models.tiny_llm_model import TinyLLMClassifier, MNISTTokenDataset
 
 
 def get_device():
@@ -31,7 +31,7 @@ def preprocess_canvas_image_for_llm(canvas_image):
     return image_tensor
 
 
-def load_tiny_llm_model(model_path="mnist_tiny_llm.pth"):
+def load_tiny_llm_model(model_path="checkpoints/mnist_tiny_llm.pth"):
     device = get_device()
     checkpoint = torch.load(model_path, map_location=device)
 

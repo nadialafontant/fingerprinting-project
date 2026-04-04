@@ -60,7 +60,8 @@ fingerprinting-project/
 │   ├── train.py
 │   ├── train_tiny_llm.py
 │   ├── train_tiny_vlm.py
-│   └── verification.py
+│   ├── verification.py
+│   └── generate_model_metrics.py
 │
 ├── checkpoints/
 │   ├── mnist_cnn.pth
@@ -71,7 +72,8 @@ fingerprinting-project/
 ├── logs/
 │   ├── emissions.csv
 │   ├── fingerprint_master_data.csv
-│   └── powermetrics_log.txt
+│   ├── powermetrics_log.txt
+│   └── model_metrics.json
 │
 └── config/
     └── device_id.txt
@@ -94,6 +96,33 @@ This is used to represent an LLM-like architecture in the fingerprinting study.
 ### 4. Tiny VLM
 A compact vision-language model that aligns image embeddings with text prompts such as `"digit 0"` through `"digit 9"`.  
 This is used to represent a multimodal architecture in the fingerprinting study.
+
+---
+
+## Model Performance Metrics
+
+In addition to hardware and power-based fingerprinting data, the project also evaluates each model using standard classification and complexity metrics.
+
+### Classification Metrics
+
+- **Accuracy**
+- **Precision**
+- **Recall**
+- **F1 Score**
+- **Confusion Matrix**
+
+### Model Complexity / Systems Metrics
+
+- **Parameter Count**
+- **FLOPs (Floating Point Operations)**
+- **Execution Time**
+- **Memory Footprint**
+- **CPU Usage**
+- **GPU Availability / Model**
+- **Estimated Energy Consumption**
+- **Estimated Emissions**
+
+These metrics make it possible to compare not only how well each model predicts digits, but also how expensive each model is to run.
 
 ---
 
@@ -120,6 +149,7 @@ Main libraries used:
 - `scikit-learn`
 - `matplotlib`
 - `opencv-python`
+- `thop`
 
 ---
 
@@ -169,6 +199,34 @@ After training, saved weights should appear in `checkpoints/`.
 
 ---
 
+## Generating Model Metrics
+
+After training the models, generate evaluation and complexity metrics with:
+
+```bash
+python scripts/generate_model_metrics.py
+```
+
+This script evaluates all trained models and saves the results to:
+
+```text
+logs/model_metrics.json
+```
+
+The generated metrics include:
+
+- accuracy
+- precision
+- recall
+- F1 score
+- confusion matrix
+- parameter count
+- FLOPs
+
+These metrics are then loaded by the Streamlit app and displayed alongside inference results.
+
+---
+
 ## Running the App
 
 Start the Streamlit interface with:
@@ -185,6 +243,7 @@ The app allows the user to:
 - clear the canvas and test another number
 - log fingerprint metadata
 - track progress toward a target dataset size
+- display model performance metrics for the selected architecture
 
 ---
 
@@ -196,7 +255,7 @@ Each inference run appends a row to:
 logs/fingerprint_master_data.csv
 ```
 
-Logged features include:
+Logged runtime and fingerprinting features include:
 
 - timestamp
 - device identifier
@@ -214,6 +273,30 @@ Logged features include:
 - RAM energy estimate
 - total energy consumed
 - total emissions
+
+When available, each inference row can also include model-level benchmark metrics such as:
+
+- model accuracy
+- weighted precision
+- weighted recall
+- weighted F1 score
+- FLOPs
+
+---
+
+## In-App Metrics Display
+
+The Streamlit app displays model performance metrics for the currently selected model, including:
+
+- Accuracy
+- Precision
+- Recall
+- F1 Score
+- Parameter Count
+- FLOPs
+- Confusion Matrix
+
+This allows the user to compare **predictive performance** and **systems behavior** in the same interface.
 
 ---
 
@@ -235,6 +318,7 @@ This supports controlled collection of inference traces for later analysis.
 - Tiny LLM and Tiny VLM are lightweight proxy architectures for fingerprinting experiments
 - CodeCarbon is used for emissions and energy estimation during inference
 - Caching is used in the Streamlit app to improve prediction speed
+- Model performance metrics are generated separately and then loaded into the app for display and logging
 
 ---
 
@@ -245,6 +329,7 @@ This supports controlled collection of inference traces for later analysis.
 - classifier trained on fingerprint metadata
 - support for additional model architectures
 - more robust GPU and system telemetry logging
+- richer visualization of confusion matrices and benchmarking summaries
 
 ---
 

@@ -1,9 +1,10 @@
+import json
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 import torch
-from model import SimpleCNN, SimpleDNN
-from llm_utils import load_tiny_llm_model, predict_with_tiny_llm
-from vlm_utils import load_tiny_vlm_model, predict_with_tiny_vlm
+from models.model import SimpleCNN, SimpleDNN
+from utils.llm_utils import load_tiny_llm_model, predict_with_tiny_llm
+from utils.vlm_utils import load_tiny_vlm_model, predict_with_tiny_vlm
 from PIL import Image
 from torchvision import transforms
 import time
@@ -13,9 +14,13 @@ import pandas as pd
 import psutil
 from codecarbon import EmissionsTracker
 
+torch.set_grad_enabled(False)
+
 
 def get_device_id():
-    id_file = "device_id.txt"
+    id_file = "config/device_id.txt"
+    os.makedirs("config", exist_ok=True)
+
     if os.path.exists(id_file):
         with open(id_file, "r") as f:
             return f.read().strip()
@@ -59,7 +64,7 @@ def ensure_session_state():
 
 
 def get_csv_counts():
-    file_path = "fingerprint_master_data.csv"
+    file_path = "logs/fingerprint_master_data.csv"
     counts = {"CNN": 0, "DNN": 0, "Tiny LLM": 0, "Tiny VLM": 0}
 
     if os.path.exists(file_path):
@@ -75,7 +80,18 @@ def get_csv_counts():
     return counts
 
 
-def log_fingerprint(model_name, num_params, exec_time, emissions_data, tracker, prediction):
+@st.cache_data
+def load_model_metrics():
+    file_path = "logs/model_metrics.json"
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            return json.load(f)
+    return {}
+
+
+def log_fingerprint(model_name, num_params, exec_time, emissions_data, tracker, prediction, model_metrics=None):
+    os.makedirs("logs", exist_ok=True)
+
     cpu_usage = psutil.cpu_percent(interval=None)
     ram_usage = psutil.virtual_memory().percent
     cpu_freq = psutil.cpu_freq().current if psutil.cpu_freq() else "N/A"
@@ -103,11 +119,38 @@ def log_fingerprint(model_name, num_params, exec_time, emissions_data, tracker, 
         "memory_footprint_mb": psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
     }
 
+    if model_metrics:
+        metadata.update({
+            "model_accuracy": model_metrics.get("accuracy"),
+            "model_precision_weighted": model_metrics.get("precision_weighted"),
+            "model_recall_weighted": model_metrics.get("recall_weighted"),
+            "model_f1_weighted": model_metrics.get("f1_weighted"),
+            "model_flops": model_metrics.get("flops")
+        })
+
     df = pd.DataFrame([metadata])
-    file_path = "fingerprint_master_data.csv"
+    file_path = "logs/fingerprint_master_data.csv"
     df.to_csv(file_path, mode="a", header=not os.path.exists(file_path), index=False)
 
     return metadata
+
+
+@st.cache_resource
+def load_all_models(device_str):
+    device = torch.device(device_str)
+
+    cnn = SimpleCNN().to(device)
+    cnn.load_state_dict(torch.load("checkpoints/mnist_cnn.pth", map_location=device))
+    cnn.eval()
+
+    dnn = SimpleDNN().to(device)
+    dnn.load_state_dict(torch.load("checkpoints/mnist_dnn.pth", map_location=device))
+    dnn.eval()
+
+    llm = load_tiny_llm_model("checkpoints/mnist_tiny_llm.pth")
+    vlm_bundle = load_tiny_vlm_model("checkpoints/mnist_tiny_vlm.pth")
+
+    return cnn, dnn, llm, vlm_bundle
 
 
 ensure_session_state()
@@ -115,6 +158,10 @@ ensure_session_state()
 st.title("ML Fingerprinter")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device_str = "cuda" if torch.cuda.is_available() else "cpu"
+
+cnn_model, dnn_model, llm_model, vlm_bundle = load_all_models(device_str)
+model_metrics = load_model_metrics()
 
 # Sidebar info
 st.sidebar.header("Device Identity")
@@ -141,22 +188,25 @@ model_choice = st.selectbox(
     ("CNN", "DNN", "Tiny LLM", "Tiny VLM")
 )
 
-# Load selected model
 if model_choice == "CNN":
-    model = SimpleCNN().to(device)
-    model.load_state_dict(torch.load("mnist_cnn.pth", map_location=device))
-    model.eval()
-
+    model = cnn_model
 elif model_choice == "DNN":
-    model = SimpleDNN().to(device)
-    model.load_state_dict(torch.load("mnist_dnn.pth", map_location=device))
-    model.eval()
-
+    model = dnn_model
 elif model_choice == "Tiny LLM":
-    model = load_tiny_llm_model("mnist_tiny_llm.pth")
-
+    model = llm_model
 elif model_choice == "Tiny VLM":
-    model, vlm_text_processor = load_tiny_vlm_model("mnist_tiny_vlm.pth")
+    model, vlm_text_processor, cached_text_features = vlm_bundle
+
+selected_metrics = model_metrics.get(model_choice, {})
+
+if selected_metrics:
+    st.sidebar.header("Selected Model Metrics")
+    st.sidebar.write(f"Accuracy: {selected_metrics.get('accuracy', 'N/A')}")
+    st.sidebar.write(f"Precision: {selected_metrics.get('precision_weighted', 'N/A')}")
+    st.sidebar.write(f"Recall: {selected_metrics.get('recall_weighted', 'N/A')}")
+    st.sidebar.write(f"F1: {selected_metrics.get('f1_weighted', 'N/A')}")
+    st.sidebar.write(f"Parameters: {selected_metrics.get('parameters', 'N/A')}")
+    st.sidebar.write(f"FLOPs: {selected_metrics.get('flops', 'N/A')}")
 
 st.write("Draw a single digit (0–9) below:")
 
@@ -187,8 +237,6 @@ if canvas_result.image_data is not None and identify_clicked:
     tracker = EmissionsTracker(save_to_file=False)
     tracker.start()
 
-    start_time = time.time()
-
     if model_choice in ["CNN", "DNN"]:
         img = Image.fromarray(canvas_result.image_data.astype("uint8")).convert("L")
         preprocess = transforms.Compose([
@@ -198,22 +246,27 @@ if canvas_result.image_data is not None and identify_clicked:
         ])
         input_tensor = preprocess(img).unsqueeze(0).to(device)
 
-        with torch.no_grad():
+        start_time = time.time()
+        with torch.inference_mode():
             output = model(input_tensor)
             pred = torch.argmax(output, 1).item()
+        exec_time = time.time() - start_time
 
         confidence = None
 
     elif model_choice == "Tiny LLM":
+        start_time = time.time()
         pred, confidence = predict_with_tiny_llm(canvas_result.image_data, model)
+        exec_time = time.time() - start_time
 
     elif model_choice == "Tiny VLM":
-        pred, confidence = predict_with_tiny_vlm(canvas_result.image_data, model, vlm_text_processor)
+        start_time = time.time()
+        pred, confidence = predict_with_tiny_vlm(canvas_result.image_data, model, cached_text_features)
+        exec_time = time.time() - start_time
 
-    exec_time = time.time() - start_time
     emissions_value = tracker.stop()
 
-    num_params = sum(p.numel() for p in model.parameters())
+    num_params = selected_metrics.get("parameters", sum(p.numel() for p in model.parameters()))
 
     log_entry = log_fingerprint(
         model_name=model_choice,
@@ -221,7 +274,8 @@ if canvas_result.image_data is not None and identify_clicked:
         exec_time=exec_time,
         emissions_data=emissions_value,
         tracker=tracker,
-        prediction=pred
+        prediction=pred,
+        model_metrics=selected_metrics
     )
 
     st.session_state.run_counts[model_choice] += 1
@@ -235,6 +289,24 @@ if st.session_state.last_prediction is not None:
 
     if st.session_state.last_model_choice in ["Tiny LLM", "Tiny VLM"] and st.session_state.last_confidence is not None:
         st.info(f"Confidence: {st.session_state.last_confidence:.4f}")
+
+    st.subheader("Model Performance Metrics")
+    active_metrics = model_metrics.get(st.session_state.last_model_choice, {})
+    if active_metrics:
+        metric_cols = st.columns(3)
+        metric_cols[0].metric("Accuracy", f"{active_metrics.get('accuracy', 0):.4f}")
+        metric_cols[1].metric("Precision", f"{active_metrics.get('precision_weighted', 0):.4f}")
+        metric_cols[2].metric("Recall", f"{active_metrics.get('recall_weighted', 0):.4f}")
+
+        metric_cols2 = st.columns(3)
+        metric_cols2[0].metric("F1 Score", f"{active_metrics.get('f1_weighted', 0):.4f}")
+        metric_cols2[1].metric("Parameters", f"{active_metrics.get('parameters', 'N/A')}")
+        metric_cols2[2].metric("FLOPs", f"{active_metrics.get('flops', 'N/A')}")
+
+        with st.expander("Confusion Matrix"):
+            st.write(active_metrics.get("confusion_matrix", []))
+    else:
+        st.warning("Model metrics not found yet. Run scripts/generate_model_metrics.py first.")
 
     st.subheader("Hardware Fingerprint Metadata")
     st.json(st.session_state.last_log_entry)

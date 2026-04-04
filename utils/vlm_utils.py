@@ -3,7 +3,7 @@ import torch
 from PIL import Image, ImageOps
 from torchvision import transforms
 
-from tiny_vlm_model import TinyVLM, VLMTextProcessor
+from models.tiny_vlm_model import TinyVLM, VLMTextProcessor
 
 
 def get_device():
@@ -36,7 +36,7 @@ def preprocess_canvas_image_for_vlm(canvas_image):
     return image_tensor
 
 
-def load_tiny_vlm_model(model_path="mnist_tiny_vlm.pth"):
+def load_tiny_vlm_model(model_path="checkpoints/mnist_tiny_vlm.pth"):
     device = get_device()
     checkpoint = torch.load(model_path, map_location=device)
 

@@ -1,0 +1,106 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter / notebooks
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python packaging / build
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Type checkers / linters
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.dmypy.json
+dmypy.json
+
+# =========================
+# Streamlit
+# =========================
+.streamlit/secrets.toml
+
+# =========================
+# OS / editor junk
+# =========================
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# =========================
+# Local config / machine-specific
+# =========================
+config/device_id.txt
+.env
+.env.*
+*.local
+
+# =========================
+# Logs / generated runtime files
+# =========================
+logs/*.csv
+logs/*.txt
+emissions.csv
+fingerprint_master_data.csv
+powermetrics_log.txt
+
+# Optional: keep the logs folder structure if empty
+!logs/.gitkeep
+
+# =========================
+# Data
+# =========================
+# Ignore downloaded/raw MNIST files
+data/MNIST/raw/*
+!data/MNIST/raw/.gitkeep
+
+# If you ever add processed/generated datasets
+data/processed/
+data/interim/
+
+# =========================
+# Model checkpoints
+# =========================
+# Ignore trained weights by default
+checkpoints/*.pth
+*.pth
+
+# Optional: keep folder structure if empty
+!checkpoints/.gitkeep
+
+# =========================
+# Cache / temp
+# =========================
+.cache/
+tmp/
+temp/
+
+# =========================
+# Misc
+# =========================
+*.log

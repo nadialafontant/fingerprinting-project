@@ -11,3 +11,4 @@ scikit-learn==1.6.1
 matplotlib==3.10.1
 opencv-python==4.11.0.86
 tqdm==4.66.1
+thop==2.0.18

@@ -68,6 +68,7 @@ logs/*.txt
 emissions.csv
 fingerprint_master_data.csv
 powermetrics_log.txt
+logs/*
 
 # Optional: keep the logs folder structure if empty
 !logs/.gitkeep

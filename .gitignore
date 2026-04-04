@@ -68,10 +68,21 @@ logs/*.txt
 emissions.csv
 fingerprint_master_data.csv
 powermetrics_log.txt
-logs/*
 
-# Optional: keep the logs folder structure if empty
+# Ignore raw per-device collected datasets
+logs/raw_devices/*.csv
+
+# Ignore merged datasets
+logs/merged/*.csv
+
+# Ignore old backup / previous master versions
+*master_data_old.csv
+*fingerprint_master_data_old.csv
+
+# Optional: keep folder structure if empty
 !logs/.gitkeep
+!logs/raw_devices/.gitkeep
+!logs/merged/.gitkeep
 
 # =========================
 # Data

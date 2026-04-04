@@ -13,7 +13,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from codecarbon import EmissionsTracker
-from model import SimpleCNN, SimpleDNN  # Import from your model.py
+from models.model import SimpleCNN, SimpleDNN  # Import from your model.py
 
 # --- PREPROCESSING ---
 transform = transforms.Compose([

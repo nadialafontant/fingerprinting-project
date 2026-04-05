@@ -394,7 +394,7 @@ After training, saved weights should appear in `checkpoints/`.
 
 ---
 
-## Generating Model Metrics
+## Generating Model Metrics 
 
 After training the models, generate evaluation and complexity metrics with:
 

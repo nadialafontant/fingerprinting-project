@@ -2,229 +2,432 @@
 
 ## Overview
 
-This project explores **machine learning model fingerprinting through power and hardware profiling**.  
-The system compares several model families trained on the MNIST handwritten digit dataset:
+This project explores **machine learning model fingerprinting through hardware, runtime, and system-level profiling**.
+
+I compare four model families trained on the MNIST handwritten digit dataset:
 
 - **CNN**
 - **DNN**
 - **Tiny LLM**
 - **Tiny VLM**
 
-A Streamlit app allows the user to draw a digit, run inference with a selected model, and record metadata such as:
+My goal is to determine whether I can infer **what type of ML model is running on a machine** based only on measurable runtime and system behavior such as:
 
 - execution time
-- memory usage
 - CPU usage
-- GPU availability
-- estimated energy consumption
-- emissions information
+- RAM usage
+- memory footprint
+- clock speed
+- device-specific hardware behavior
+- energy/emissions data (when available)
 
-The goal is to build a dataset of model execution signatures and use those signatures to distinguish between model architectures based on their runtime and power-related behavior.
-
----
-
-## Quick Start (End-to-End Workflow)
-
-This project supports **multi-device dataset collection** for building a large-scale model fingerprinting dataset.
-
-Follow this workflow on each device, then merge everything at the end.
+This project supports **cross-device data collection** and builds multiple datasets for later classification experiments.
 
 ---
 
-## BEFORE Data Collection (Per Device Setup)
+## Research Goal
 
-Run these steps on **every device** before collecting data.
+This project is motivated by the idea of **model fingerprinting through side-channel style runtime signals**.
 
-### 1. Get the latest code
+### Core idea
 
-```bash
-git pull --rebase
-```
+If different model architectures leave behind different hardware/runtime “signatures,” then I may be able to classify:
 
-### 2. Activate environment
+- **which model family is running**
+- **which device is being used**
+- or both
 
-#### Conda
+without directly inspecting the model itself.
 
-```bash
+### Example attacker-style framing
+
+An attacker may not have access to the actual `.pth` model file, but they may still observe:
+
+- CPU behavior
+- timing behavior
+- memory behavior
+- system load
+- energy usage
+
+From that alone, they may still be able to predict:
+
+- “This is probably a CNN”
+- “This is likely a transformer-style tiny LLM”
+- “This looks like a VLM-like workload”
+
+This project builds the dataset needed to test that idea.
+
+---
+
+## Devices Used
+
+This project currently includes data from:
+
+- **MacBook Pro**
+- **Windows 10 Device #1**
+- **Windows 10 Device #2**
+- **Windows 11**
+- **Jetson Nano**
+- **Raspberry Pi**
+
+I use these devices in different dataset pipelines depending on what each device can support.
+
+---
+
+## Dataset Types in This Project
+
+This repository supports **three separate dataset layers**:
+
+### 1. Full Model Fingerprint Dataset
+I use this for **full model inference fingerprinting**.
+
+It includes:
+
+- model type
+- prediction
+- parameters
+- execution timing
+- CPU / RAM usage
+- memory footprint
+- energy / emissions (when available)
+- model benchmark metrics
+
+Devices used:
+
+- MacBook Pro
+- Windows 10
+- Windows 11
+
+This is my **richest and most complete dataset**.
+
+---
+
+### 2. Edge Device Profiler Dataset
+I use this for **device-only hardware/runtime profiling** on lower-resource devices.
+
+It includes:
+
+- CPU usage
+- RAM usage
+- CPU clock
+- memory footprint
+- CPU temperature
+- execution timing
+- device identity / type
+
+Devices used:
+
+- Jetson Nano
+- Raspberry Pi
+
+This dataset does **not** run all four ML models.  
+Instead, it captures **device fingerprint behavior** for edge devices.
+
+---
+
+### 3. Hybrid Reduced Dataset
+I use this for **cross-device classifier training** across all devices.
+
+I create it by:
+
+- taking the **big/full datasets** (Mac + Windows)
+- reducing them down to a **shared subset of columns**
+- combining them with the **edge profiler datasets** (Jetson + Raspberry Pi)
+
+This gives me a **balanced, multi-device dataset** where all devices share the same feature schema.
+
+This is likely the best dataset for my **final classifier experiments**.
+
+---
+
+## Project Workflow Summary
+
+There are now **two main collection workflows**:
+
+### Workflow A — Full Model Fingerprinting
+For higher-capability machines:
+
+- MacBook Pro
+- Windows 10
+- Windows 11
+
+### Workflow B — Edge Device Profiling
+For lower-resource devices:
+
+- Jetson Nano
+- Raspberry Pi
+
+Then later:
+
+### Workflow C — Merge + Reduce + Hybridize
+I use this to combine and align everything into classifier-ready datasets.
+
+---
+
+# FULL MODEL FINGERPRINTING WORKFLOW
+
+## Before Data Collection (Per Device)
+
+I use this workflow on devices that can run the full inference pipeline, which currently includes:
+
+- **MacBook Pro**
+- **Windows 10**
+- **Windows 11**
+
+Before collecting data on a device, I make sure to:
+
+1. **Pull the latest code**
+   ```bash
+   git pull --rebase
+
+	2.	Activate the environment
+Conda:
+
 conda activate fingerprinting
-```
 
-#### or venv
+or venv:
 
-```bash
 source .venv/bin/activate
-```
 
-### 3. Install dependencies
 
-```bash
+	3.	Install dependencies
+
 pip install -r requirements.txt
-```
 
-### 4. Ensure trained model checkpoints exist
 
+	4.	Verify that all trained model checkpoints exist
 Expected files:
 
-```text
 checkpoints/mnist_cnn.pth
 checkpoints/mnist_dnn.pth
 checkpoints/mnist_tiny_llm.pth
 checkpoints/mnist_tiny_vlm.pth
-```
 
-If missing, train them:
+If any are missing, I train them using:
 
-```bash
 python scripts/train.py
 python scripts/train_tiny_llm.py
 python scripts/train_tiny_vlm.py
-```
 
-### 5. Generate model performance metrics
 
-```bash
+	5.	Generate model metrics
+
 python scripts/generate_model_metrics.py
-```
 
 This creates:
 
-```text
 logs/model_metrics.json
-```
 
----
 
-## DATA COLLECTION (Per Device)
 
-### Automated dataset generation
+This setup step ensures that every full-model device is using the same codebase, same checkpoints, and same metric references before I begin collecting fingerprint data.
 
-```bash
+⸻
+
+Automated Dataset Collection
+
+Once setup is complete, I generate a large automated fingerprint dataset using:
+
 python scripts/generate_fingerprint_dataset.py
-```
 
-This generates:
+This script runs automated inference across all supported model types and logs runtime/system metadata for each run.
 
-- **1000 samples per model**
-- Total: **4000 rows per run**
+Typical output:
+	•	1000 samples per model
+	•	Total: 4000 rows per automated run
 
 Saved to:
 
-```text
 logs/raw_devices/fingerprint_dataset_<device_short>_automated.csv
-```
 
----
+This automated dataset is one of the main sources for my full model fingerprint dataset.
 
-### Manual dataset collection (optional but recommended)
+It captures structured inference runs without requiring manual input, which makes it ideal for building a larger training dataset.
 
-```bash
+⸻
+
+Manual Dataset Collection (Optional but Recommended)
+
+In addition to automated collection, I can also collect manual inference traces using the Streamlit interface:
+
 python -m streamlit run app.py
-```
 
-This allows you to draw digits and collect human-input data.
+This allows me to:
+	•	draw digits by hand
+	•	choose a model manually
+	•	run inference interactively
+	•	save additional fingerprinting metadata
 
 Saved to:
 
-```text
 logs/raw_devices/fingerprint_dataset_<device_short>_manual.csv
-```
 
----
+I treat this as a useful supplement to the automated dataset because it adds more natural variation and real user interaction patterns.
 
-## AFTER Data Collection (Per Device)
+While optional, it is still recommended because it helps diversify the fingerprint data.
 
-After finishing on a device, make sure to keep:
+⸻
 
-```text
+Files to Keep After Collection
+
+After finishing collection on a full-model device, I keep the following files:
+
 logs/raw_devices/fingerprint_dataset_<device_short>_automated.csv
 logs/raw_devices/fingerprint_dataset_<device_short>_manual.csv
-```
+logs/model_metrics.json
+logs/powermetrics_log.txt   (if available)
+logs/emissions.csv          (if available)
 
-You can now move to another device and repeat the same process.
+Important notes:
+	•	The automated CSV is required for my main model-classification dataset
+	•	The manual CSV is optional but helpful
+	•	The model metrics JSON should be preserved so I can align model performance with runtime fingerprints
+	•	The powermetrics and emissions files may only exist on some devices, depending on platform support
 
----
+Once I finish collecting data on one device, I move those files into the correct device folder under data/raw/ so they can later be merged into the full master dataset.
 
-## AFTER ALL DEVICES (Merge Everything)
+⸻
 
-Once data has been collected from all devices:
+EDGE DEVICE PROFILING WORKFLOW
 
-1. Copy all dataset files into the `logs/raw_devices/` folder of a single main project
+Why I Use a Separate Edge Pipeline
 
-2. Run:
+Jetson Nano and Raspberry Pi may not reliably support:
+	•	all PyTorch dependencies
+	•	all model checkpoints
+	•	all inference workflows
+	•	energy/emissions tooling
 
-```bash
-python scripts/merge_fingerprint_datasets.py
-```
+So instead, I use them to collect a hardware/runtime device fingerprint dataset.
+
+This is still valuable because it gives my classifier cross-device variability and edge-device behavior.
+
+⸻
+
+Edge Device Requirements
+
+I use the lightweight requirements file:
+
+pip install -r requirements-edge.txt
+
+This is designed for profiler-only collection.
+
+⸻
+
+Jetson Nano Device Profiling
+
+I run:
+
+python scripts/jetson_nano_device_profiler.py
 
 This creates:
 
-```text
-logs/merged/fingerprint_dataset_master.csv
-```
+data/raw/jetson_nano/fingerprint_dataset_<device_short>_jetson_device_profiler.csv
 
----
+Typical columns include:
+	•	timestamp
+	•	unique_device_id
+	•	device_short_id
+	•	pc_name
+	•	device_type
+	•	collection_mode
+	•	sample_index
+	•	cpu_usage_pct
+	•	ram_usage_pct
+	•	cpu_clock_mhz
+	•	memory_footprint_mb
+	•	execution_time_sec
+	•	cpu_temp_c
+	•	gpu_model
+	•	notes
 
-## Final Dataset
+⸻
 
-The merged dataset includes:
+Raspberry Pi Device Profiling
 
-- multiple model types (CNN, DNN, Tiny LLM, Tiny VLM)
-- multiple devices (via `unique_device_id`)
-- both collection modes:
-  - `manual`
-  - `automated`
-- runtime + hardware + energy features
+I run:
 
-This dataset can be used for:
+python scripts/raspberry_pi_device_profiler.py
 
-- model fingerprint classification
-- device-based performance analysis
-- energy-aware ML research
-- architecture identification from runtime signals
+This creates:
 
----
+data/raw/raspberry_pi/fingerprint_dataset_<device_short>_raspberry_pi_device_profiler.csv
 
-## One-Line Summary
+Typical columns include:
+	•	timestamp
+	•	unique_device_id
+	•	device_short_id
+	•	pc_name
+	•	device_type
+	•	collection_mode
+	•	sample_index
+	•	cpu_usage_pct
+	•	ram_usage_pct
+	•	cpu_clock_mhz
+	•	memory_footprint_mb
+	•	execution_time_sec
+	•	cpu_temp_c
+	•	gpu_model
+	•	notes
 
-Per device:
+⸻
 
-```bash
-python scripts/generate_model_metrics.py
-python scripts/generate_fingerprint_dataset.py
-python -m streamlit run app.py
-```
+Recommended Edge Sample Counts
 
-After all devices:
+Recommended collection size:
+	•	1000 samples per edge device
 
-```bash
-python scripts/merge_fingerprint_datasets.py
-```
+This is enough to give me a useful hardware fingerprint baseline without making the dataset too small.
 
----
+⸻
 
-## Project Goals
+DATA ORGANIZATION
 
-- Train multiple model families on the same digit-recognition task
-- Run inference in a shared interface
-- Log hardware and execution metadata during inference
-- Build a structured fingerprint dataset
-- Analyze whether model families can be identified from their runtime profile
+Recommended Repository Structure
 
----
-
-## Repository Structure
-
-```text
 fingerprinting-project/
 │
 ├── app.py
 ├── README.md
 ├── requirements.txt
+├── requirements-edge.txt
 ├── .gitignore
 │
+├── checkpoints/
+│   ├── mnist_cnn.pth
+│   ├── mnist_dnn.pth
+│   ├── mnist_tiny_llm.pth
+│   └── mnist_tiny_vlm.pth
+│
+├── config/
+│   └── device_id.txt
+│
 ├── data/
-│   └── MNIST/
-│       └── raw/
+│   ├── raw/
+│   │   ├── macbook_air/
+│   │   ├── windows_10/
+│   │   ├── windows_11/
+│   │   ├── jetson_nano/
+│   │   └── raspberry_pi/
+│   │
+│   ├── interim/
+│   │   ├── macbook_air_reduced.csv
+│   │   ├── windows_10_reduced.csv
+│   │   ├── windows_11_reduced.csv
+│   │   ├── merged_edge_profiler.csv
+│   │   └── hybrid_reduced_cross_device.csv
+│   │
+│   └── final/
+│       ├── classifier_full_model_dataset.csv
+│       └── classifier_reduced_device_dataset.csv
+│
+├── logs/
+│   ├── raw_devices/
+│   ├── merged/
+│   │   └── fingerprint_master_data.csv
+│   ├── emissions.csv
+│   ├── powermetrics_log.txt
+│   └── model_metrics.json
 │
 ├── models/
 │   ├── model.py
@@ -242,310 +445,295 @@ fingerprinting-project/
 │   ├── verification.py
 │   ├── generate_model_metrics.py
 │   ├── generate_fingerprint_dataset.py
-│   ├── merge_fingerprint_datasets.py
+│   ├── merge_master_sets.py
+│   ├── merge_edge_sets.py
+│   ├── reduce_datasets.py
+│   ├── merge_hybrid_sets.py
+│   ├── jetson_nano_device_profiler.py
+│   ├── raspberry_pi_device_profiler.py
 │   └── check_model_accuracy.py
 │
-├── checkpoints/
-│   ├── mnist_cnn.pth
-│   ├── mnist_dnn.pth
-│   ├── mnist_tiny_llm.pth
-│   └── mnist_tiny_vlm.pth
-│
-├── logs/
-│   ├── raw_devices/
-│   │   ├── fingerprint_dataset_<device_short>_automated.csv
-│   │   └── fingerprint_dataset_<device_short>_manual.csv
-│   │
-│   ├── merged/
-│   │   └── fingerprint_dataset_master.csv
-│   │
-│   ├── emissions.csv
-│   ├── powermetrics_log.txt
-│   └── model_metrics.json
-│
-├── config/
-│   └── device_id.txt
-│
 └── __pycache__/
-```
 
----
 
-## Models Included
+⸻
 
-### 1. CNN
+Full Model Dataset Merge
+
+After collecting data from MacBook Pro, Windows 10, and Windows 11, I merge those datasets into a single full fingerprint dataset.
+
+I use:
+
+python scripts/merge_master_sets.py
+
+This produces:
+
+logs/merged/fingerprint_master_data.csv
+
+This file contains the full model fingerprint data from the devices that support the main inference workflow.
+
+I use this as the starting point for my main classifier dataset.
+
+⸻
+
+Edge Dataset Merge
+
+After collecting profiler-only data from Jetson Nano and Raspberry Pi, I merge those into an edge-only dataset.
+
+I use:
+
+python scripts/merge_edge_sets.py
+
+This produces:
+
+data/interim/merged_edge_profiler.csv
+
+This dataset is useful for:
+	•	Jetson vs Raspberry Pi comparison
+	•	edge-device fingerprint analysis
+	•	baseline hardware behavior analysis
+
+⸻
+
+Reduced Dataset Creation
+
+Because the MacBook and Windows datasets contain many more columns than Jetson and Raspberry Pi, I create reduced versions of the larger datasets using only the columns shared across all devices.
+
+I use:
+
+python scripts/reduce_datasets.py
+
+This creates:
+
+data/interim/macbook_air_reduced.csv
+data/interim/windows_10_reduced.csv
+data/interim/windows_11_reduced.csv
+
+These files keep only the shared hardware/runtime columns needed for a cross-device hybrid dataset.
+
+⸻
+
+Hybrid Dataset Merge
+
+Once the reduced Mac/Windows files and the edge profiler files are ready, I merge them into a final reduced cross-device dataset.
+
+I use:
+
+python scripts/merge_hybrid_sets.py
+
+This creates:
+
+data/final/classifier_reduced_device_dataset.csv
+
+This is my cross-device aligned hybrid dataset, which includes:
+	•	MacBook Pro
+	•	Windows 10
+	•	Windows 11
+	•	Jetson Nano
+	•	Raspberry Pi
+
+using only shared features.
+
+⸻
+
+Final Datasets Produced
+
+At the end of the full workflow, I produce two main final datasets:
+
+1. Full Model Fingerprint Dataset
+
+Used for:
+	•	model classification
+	•	architecture fingerprinting
+	•	inference behavior analysis
+
+Output:
+
+logs/merged/fingerprint_master_data.csv
+
+2. Reduced Cross-Device Hybrid Dataset
+
+Used for:
+	•	cross-device experiments
+	•	hardware fingerprint comparison
+	•	lightweight classifier experiments
+
+Output:
+
+data/final/classifier_reduced_device_dataset.csv
+
+
+⸻
+
+MODEL DETAILS
+
+CNN
 
 A convolutional neural network trained on MNIST.
 
-### 2. DNN
+This model represents a more traditional image-based deep learning architecture and provides a useful convolutional baseline for fingerprint comparison.
 
-A fully connected neural network baseline for MNIST classification.
+⸻
 
-### 3. Tiny LLM
+DNN
 
-A small transformer-style model that tokenizes image patches and predicts the digit class.  
-This is used to represent an LLM-like architecture in the fingerprinting study.
+A fully connected neural network trained on MNIST.
 
-### 4. Tiny VLM
+This serves as a simpler baseline model and helps me compare whether lightweight fully connected architectures produce different runtime signatures from convolutional or transformer-style models.
 
-A compact vision-language model that aligns image embeddings with text prompts such as `"digit 0"` through `"digit 9"`.  
-This is used to represent a multimodal architecture in the fingerprinting study.
+⸻
 
----
+Tiny LLM
 
-## Model Performance Metrics
+A small transformer-style model that tokenizes image patches and predicts the digit class.
 
-In addition to hardware and power-based fingerprinting data, the project also evaluates each model using standard classification and complexity metrics.
+I use this as an LLM-like proxy architecture for fingerprinting experiments. It is not intended to be a production language model, but rather a lightweight architecture that behaves differently enough from CNNs and DNNs to test fingerprinting hypotheses.
 
-### Classification Metrics
+⸻
 
-- **Accuracy**
-- **Precision**
-- **Recall**
-- **F1 Score**
-- **Confusion Matrix**
+Tiny VLM
 
-### Model Complexity / Systems Metrics
+A compact vision-language style model that aligns image embeddings with text prompts such as "digit 0" through "digit 9".
 
-- **Parameter Count**
-- **FLOPs (Floating Point Operations)**
-- **Execution Time**
-- **Memory Footprint**
-- **CPU Usage**
-- **GPU Availability / Model**
-- **Estimated Energy Consumption**
-- **Estimated Emissions**
+I use this as a multimodal proxy architecture to represent VLM-like behavior in a small, controlled setting.
 
-These metrics make it possible to compare not only how well each model predicts digits, but also how expensive each model is to run.
+⸻
 
----
+MODEL PERFORMANCE METRICS
 
-## Dependencies
+Classification Metrics
 
-Install dependencies with:
+In addition to fingerprinting data, I also evaluate each model using standard classification metrics such as:
+	•	Accuracy
+	•	Precision
+	•	Recall
+	•	F1 Score
+	•	Confusion Matrix
 
-```bash
-pip install -r requirements.txt
-```
+These help me compare predictive performance across model types.
 
-Main libraries used:
+⸻
 
-- `streamlit`
-- `streamlit-drawable-canvas`
-- `torch`
-- `torchvision`
-- `torchaudio`
-- `pillow`
-- `numpy`
-- `pandas`
-- `psutil`
-- `codecarbon`
-- `scikit-learn`
-- `matplotlib`
-- `opencv-python`
-- `thop`
-- `tqdm`
+Systems / Runtime Metrics
 
----
+I also track systems-oriented metrics such as:
+	•	Parameter Count
+	•	FLOPs (Floating Point Operations)
+	•	Execution Time
+	•	Memory Footprint
+	•	CPU Usage
+	•	GPU Availability / Model
+	•	Estimated Energy Consumption
+	•	Estimated Emissions
 
-## Environment Setup
+These are especially important for fingerprinting because they capture the runtime and hardware behavior that my project is trying to model.
 
-### Option 1: Conda
+⸻
 
-Create and activate an environment:
+STREAMLIT APP
 
-```bash
-conda create -n fingerprinting python=3.12 -y
-conda activate fingerprinting
-pip install -r requirements.txt
-```
+Running the App
 
-### Option 2: venv
+To launch the interactive app, I run:
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
----
-
-## Training the Models
-
-### Train CNN and DNN
-
-```bash
-python scripts/train.py
-```
-
-### Train Tiny LLM
-
-```bash
-python scripts/train_tiny_llm.py
-```
-
-### Train Tiny VLM
-
-```bash
-python scripts/train_tiny_vlm.py
-```
-
-After training, saved weights should appear in `checkpoints/`.
-
----
-
-## Generating Model Metrics 
-
-After training the models, generate evaluation and complexity metrics with:
-
-```bash
-python scripts/generate_model_metrics.py
-```
-
-This script evaluates all trained models and saves the results to:
-
-```text
-logs/model_metrics.json
-```
-
-The generated metrics include:
-
-- accuracy
-- precision
-- recall
-- F1 score
-- confusion matrix
-- parameter count
-- FLOPs
-
-These metrics are then loaded by the Streamlit app and displayed alongside inference results.
-
----
-
-## Running the App
-
-Start the Streamlit interface with:
-
-```bash
 python -m streamlit run app.py
-```
 
-The app allows the user to:
 
-- select a model
-- draw a digit
-- run inference
-- clear the canvas and test another number
-- log fingerprint metadata
-- track progress toward a target dataset size
-- display model performance metrics for the selected architecture
+⸻
 
----
+In-App Capabilities
 
-## Logged Metadata
+The Streamlit app allows me to:
+	•	select a model
+	•	draw a digit
+	•	run inference
+	•	clear the canvas and test another digit
+	•	log fingerprint metadata
+	•	track dataset collection progress
+	•	display model performance metrics for the selected architecture
 
-Manual and automated inference runs are saved into device-specific CSV files under:
+This app is primarily used for manual fingerprint data collection and qualitative testing.
 
-```text
-logs/raw_devices/
-```
+⸻
 
-Logged runtime and fingerprinting features include:
+LOGGED FEATURES
 
-- timestamp
-- device identifier
-- device short ID
-- PC / host name
-- collection mode (`manual` or `automated`)
-- sample index (for automated runs)
-- true label (for automated runs)
-- model type
-- number of parameters
-- prediction result
-- execution time
-- CPU usage
-- RAM usage
-- memory footprint
-- CPU clock speed
-- GPU name
-- CPU energy estimate
-- GPU energy estimate
-- RAM energy estimate
-- total energy consumed
-- total emissions
+Across the different collection pipelines, the project logs many runtime and fingerprinting features.
 
-When available, each inference row can also include model-level benchmark metrics such as:
+Depending on the device and workflow, logged fields may include:
+	•	timestamp
+	•	unique device identifier
+	•	device short ID
+	•	host / PC name
+	•	device type
+	•	collection mode
+	•	sample index
+	•	true label
+	•	model type
+	•	parameter count
+	•	prediction result
+	•	execution time
+	•	CPU usage
+	•	RAM usage
+	•	memory footprint
+	•	CPU clock speed
+	•	GPU model
+	•	CPU temperature
+	•	CPU energy estimate
+	•	GPU energy estimate
+	•	RAM energy estimate
+	•	total energy consumed
+	•	total emissions
 
-- model accuracy
-- weighted precision
-- weighted recall
-- weighted F1 score
-- FLOPs
+When available, rows may also include model benchmark metrics such as:
+	•	model accuracy
+	•	weighted precision
+	•	weighted recall
+	•	weighted F1 score
+	•	FLOPs
 
----
+⸻
 
-## In-App Metrics Display
+PROJECT GOALS
 
-The Streamlit app displays model performance metrics for the currently selected model, including:
+The main goals of this project are to:
+	•	train multiple model families on the same task
+	•	run inference in a shared environment
+	•	log hardware and execution metadata during inference
+	•	build a structured fingerprint dataset
+	•	analyze whether model families can be identified from their runtime profile
+	•	compare behavior across different device types
+	•	prepare the data for future classifier training
 
-- Accuracy
-- Precision
-- Recall
-- F1 Score
-- Parameter Count
-- FLOPs
-- Confusion Matrix
+⸻
 
-This allows the user to compare **predictive performance** and **systems behavior** in the same interface.
+FUTURE IMPROVEMENTS
 
----
+Possible next steps for this project include:
+	•	training a classifier directly on fingerprint metadata
+	•	evaluating how well model type can be predicted from runtime features
+	•	building a visualization dashboard for fingerprint patterns
+	•	improving energy and telemetry logging across more devices
+	•	adding more model architectures
+	•	expanding to larger datasets beyond MNIST
+	•	studying adversarial or attacker-style inference scenarios more directly
 
-## Fingerprinting Dataset Collection
+⸻
 
-The project is designed to collect approximately **1000 runs per model**.  
-The Streamlit sidebar tracks:
+NOTES
 
-- saved dataset counts
-- current session counts
+A few practical notes about this project:
+	•	MNIST data is automatically downloaded if not already present
+	•	Tiny LLM and Tiny VLM are lightweight proxy architectures for fingerprinting experiments
+	•	CodeCarbon is used for emissions and energy estimation when supported
+	•	Some telemetry fields are only available on certain platforms
+	•	Jetson Nano and Raspberry Pi are intentionally treated as profiler-oriented edge devices
+	•	The project is structured so that raw data, reduced data, and final datasets remain separated
 
-This supports controlled collection of inference traces for later analysis.
+⸻
 
-For larger-scale experiments, the automated collection script can generate **4000 rows per run** (1000 per model), which can then be combined across multiple devices.
+AUTHOR
 
----
+Nadia de Lafontant
 
-## Notes
-
-- MNIST data is automatically downloaded if not already present
-- Tiny LLM and Tiny VLM are lightweight proxy architectures for fingerprinting experiments
-- CodeCarbon is used for emissions and energy estimation during inference
-- Caching is used in the Streamlit app to improve prediction speed
-- Model performance metrics are generated separately and then loaded into the app for display and logging
-- Device-specific CSVs are stored separately and merged later for large-scale experiments
-
----
-
-## Future Improvements
-
-- automated batch collection of fingerprint traces
-- visualization dashboard for power signatures
-- classifier trained on fingerprint metadata
-- support for additional model architectures
-- more robust GPU and system telemetry logging
-- richer visualization of confusion matrices and benchmarking summaries
-
----
-
-## Troubleshooting
-
-### Canvas toolbar icons look dark or hard to see
-
-Depending on your browser/theme settings, some toolbar icons in the drawing canvas may appear darker than expected. If that happens, try switching your browser or system theme.
-
----
-
-## Author
-
-**Nadia de Lafontant**
-
-Project focus: model fingerprinting, ML systems profiling, and architecture-aware runtime analysis.
+Project focus: model fingerprinting, ML systems profiling, hardware-aware runtime analysis, and cross-device architecture identification.

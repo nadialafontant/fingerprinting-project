@@ -67,7 +67,8 @@ logs/*.csv
 logs/*.txt
 emissions.csv
 fingerprint_master_data.csv
-powermetrics_log.txt
+logs/powermetrics_log.txt
+logs/raw_devices/*
 
 # Ignore raw per-device collected datasets
 logs/raw_devices/*.csv
@@ -90,6 +91,7 @@ logs/merged/*.csv
 # Ignore downloaded/raw MNIST files
 data/MNIST/raw/*
 !data/MNIST/raw/.gitkeep
+data/raw/*
 
 # If you ever add processed/generated datasets
 data/processed/

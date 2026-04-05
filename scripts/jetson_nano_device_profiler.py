@@ -44,11 +44,8 @@ def get_device_type() -> str:
 
 
 def get_gpu_model() -> str:
-    # Jetson Nano integrated GPU is Maxwell-based Tegra X1
-    # Keep this simple and robust for edge logging.
     try:
-        model = "NVIDIA Tegra X1 Integrated GPU"
-        return model
+        return "NVIDIA Tegra X1 Integrated GPU"
     except Exception:
         return "Unknown"
 
@@ -70,7 +67,6 @@ def get_memory_footprint_mb():
 
 
 def get_cpu_temp_c():
-    # Works on many Linux ARM boards if thermal zone exists.
     candidates = [
         "/sys/class/thermal/thermal_zone0/temp",
         "/sys/devices/virtual/thermal/thermal_zone0/temp",
@@ -154,7 +150,7 @@ def build_row(
 
 
 def profile_device(
-    num_samples: int = 300,
+    num_samples: int = 1000,
     flush_every: int = 25,
     sample_sleep_sec: float = 0.5,
     notes: str = "Jetson device profiling and timing collector only",
@@ -191,14 +187,12 @@ def profile_device(
     for i in progress:
         start = time.time()
 
-        # Small interval makes cpu_percent meaningful per sample
         cpu_usage_pct = psutil.cpu_percent(interval=0.2)
         ram_usage_pct = round(psutil.virtual_memory().percent, 4)
         cpu_clock_mhz = get_cpu_clock_mhz()
         memory_footprint_mb = get_memory_footprint_mb()
         cpu_temp_c = get_cpu_temp_c()
 
-        # Optional pause so samples are spaced out a bit
         if sample_sleep_sec > 0:
             time.sleep(sample_sleep_sec)
 
@@ -242,7 +236,7 @@ def profile_device(
 
 if __name__ == "__main__":
     profile_device(
-        num_samples=300,
+        num_samples=1000,
         flush_every=25,
         sample_sleep_sec=0.5,
         notes="Jetson Nano edge-device hardware profiling only",

@@ -1,6 +1,2 @@
-numpy
-pandas
-psutil
-tqdm
-torch
-torchvision
+psutil==5.9.8
+tqdm==4.64.1
